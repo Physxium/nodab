@@ -1,1 +1,122 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#f2f2f7" />
+  <meta name="description" content="과일남 자유랭 포지션 랜덤 배치" />
+  <title>과일남 자유랭</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">QUEUE HELPER</p>
+        <h1>과일남 자유랭</h1>
+      </div>
 
+      <a
+        class="developer-link"
+        href="https://physxium.pages.dev"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Physxium <span aria-hidden="true">↗</span>
+      </a>
+    </header>
+
+    <section class="panel" aria-labelledby="queue-title">
+      <div class="section-heading">
+        <h2 id="queue-title">큐 타입</h2>
+      </div>
+
+      <div class="segmented-control" role="group" aria-label="큐 타입 선택">
+        <button class="segment active" type="button" data-queue="5">
+          5인큐
+        </button>
+
+        <button class="segment" type="button" data-queue="3">
+          3인큐
+        </button>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="member-title">
+      <div class="section-heading">
+        <h2 id="member-title">멤버 선택</h2>
+        <span id="memberCount" class="count">0 / 5</span>
+      </div>
+
+      <div
+        id="memberGrid"
+        class="member-grid"
+        aria-live="polite"
+      ></div>
+
+      <div
+        id="customInputWrap"
+        class="custom-input-wrap"
+        hidden
+      >
+        <input
+          id="customName"
+          type="text"
+          maxlength="10"
+          autocomplete="off"
+          placeholder="이름 입력"
+          aria-label="직접 입력 이름"
+        />
+
+        <button
+          id="addCustomMember"
+          type="button"
+          class="small-button"
+        >
+          추가
+        </button>
+      </div>
+
+      <p id="helperText" class="helper-text">
+        5명을 선택해 주세요.
+      </p>
+    </section>
+
+    <button
+      id="rollButton"
+      class="roll-button"
+      type="button"
+      disabled
+    >
+      포지션 돌리기
+    </button>
+
+    <section
+      id="resultSection"
+      class="result-section"
+      aria-labelledby="result-title"
+      hidden
+    >
+      <div class="section-heading result-heading">
+        <h2 id="result-title">결과</h2>
+
+        <button
+          id="rerollButton"
+          class="text-button"
+          type="button"
+        >
+          다시 돌리기
+        </button>
+      </div>
+
+      <div
+        id="resultCard"
+        class="result-card"
+        aria-live="polite"
+      ></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
