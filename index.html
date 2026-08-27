@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f2f2f7" />
-  <meta name="description" content="과일남 자유랭 포지션 랜덤 배치" />
+  <meta name="description" content="과일남 자유랭 포지션 배치와 범인 투표" />
   <title>과일남 자유랭</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -26,96 +26,163 @@
       </a>
     </header>
 
-    <section class="panel" aria-labelledby="queue-title">
-      <div class="section-heading">
-        <h2 id="queue-title">큐 타입</h2>
-      </div>
+    <section id="homeView">
+      <section class="panel">
+        <div class="section-heading">
+          <h2>큐 타입</h2>
+        </div>
 
-      <div class="segmented-control" role="group" aria-label="큐 타입 선택">
-        <button class="segment active" type="button" data-queue="5">
-          5인큐
-        </button>
+        <div class="segmented-control" role="group" aria-label="큐 타입 선택">
+          <button class="segment active" type="button" data-queue="5">5인큐</button>
+          <button class="segment" type="button" data-queue="3">3인큐</button>
+        </div>
+      </section>
 
-        <button class="segment" type="button" data-queue="3">
-          3인큐
-        </button>
-      </div>
+      <section class="panel">
+        <div class="section-heading">
+          <h2>멤버 선택</h2>
+          <span id="memberCount" class="count">0 / 5</span>
+        </div>
+
+        <div id="memberGrid" class="member-grid"></div>
+
+        <div id="customInputWrap" class="custom-input-wrap" hidden>
+          <input
+            id="customName"
+            type="text"
+            maxlength="10"
+            autocomplete="off"
+            placeholder="이름 입력"
+          />
+          <button id="addCustomMember" type="button" class="small-button">추가</button>
+        </div>
+
+        <p id="helperText" class="helper-text">5명을 선택해 주세요.</p>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <h2>방 옵션</h2>
+        </div>
+
+        <label class="toggle-row">
+          <span>
+            <strong>범인 투표</strong>
+            <small>패배 시 주 범인 · 부 범인 투표</small>
+          </span>
+
+          <input id="culpritToggle" class="switch-input" type="checkbox" checked />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+
+        <label class="toggle-row sub-option">
+          <span>
+            <strong>범인 유배</strong>
+            <small>범인의 다음 판 포지션 고정</small>
+          </span>
+
+          <input id="exileToggle" class="switch-input" type="checkbox" />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+
+        <label class="toggle-row sub-option">
+          <span>
+            <strong>오늘의 범인</strong>
+            <small>방 안에서 범인 점수 누적</small>
+          </span>
+
+          <input id="todayToggle" class="switch-input" type="checkbox" />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+      </section>
+
+      <button id="createRoomButton" class="roll-button" type="button" disabled>
+        방 만들기
+      </button>
     </section>
 
-    <section class="panel" aria-labelledby="member-title">
-      <div class="section-heading">
-        <h2 id="member-title">멤버 선택</h2>
-        <span id="memberCount" class="count">0 / 5</span>
-      </div>
+    <section id="roomView" hidden>
+      <section class="panel room-top">
+        <div class="room-code-line">
+          <div>
+            <p class="micro-label">ROOM</p>
+            <strong id="roomCode">----------</strong>
+          </div>
 
-      <div
-        id="memberGrid"
-        class="member-grid"
-        aria-live="polite"
-      ></div>
+          <button id="copyLinkButton" class="small-secondary" type="button">
+            링크 복사
+          </button>
+        </div>
 
-      <div
-        id="customInputWrap"
-        class="custom-input-wrap"
-        hidden
-      >
-        <input
-          id="customName"
-          type="text"
-          maxlength="10"
-          autocomplete="off"
-          placeholder="이름 입력"
-          aria-label="직접 입력 이름"
-        />
+        <p id="roomOptionSummary" class="helper-text room-summary"></p>
+      </section>
 
-        <button
-          id="addCustomMember"
-          type="button"
-          class="small-button"
-        >
-          추가
-        </button>
-      </div>
+      <section id="joinPanel" class="panel" hidden>
+        <div class="section-heading">
+          <h2>내 이름 선택</h2>
+        </div>
 
-      <p id="helperText" class="helper-text">
-        5명을 선택해 주세요.
-      </p>
-    </section>
+        <div id="joinGrid" class="member-grid"></div>
+        <p id="joinMessage" class="helper-text">본인 이름을 선택해 주세요.</p>
+      </section>
 
-    <button
-      id="rollButton"
-      class="roll-button"
-      type="button"
-      disabled
-    >
-      포지션 돌리기
-    </button>
+      <section class="panel">
+        <div class="section-heading">
+          <h2>참가자</h2>
+          <span id="onlineCount" class="count">0 / 0</span>
+        </div>
 
-    <section
-      id="resultSection"
-      class="result-section"
-      aria-labelledby="result-title"
-      hidden
-    >
-      <div class="section-heading result-heading">
-        <h2 id="result-title">결과</h2>
+        <div id="presenceList" class="presence-list"></div>
+      </section>
 
-        <button
-          id="rerollButton"
-          class="text-button"
-          type="button"
-        >
-          다시 돌리기
-        </button>
-      </div>
+      <section id="gamePanel" class="panel">
+        <div class="section-heading">
+          <div>
+            <p class="micro-label">ROUND <span id="roundNumber">1</span></p>
+            <h2 id="gameTitle">포지션 대기</h2>
+          </div>
 
-      <div
-        id="resultCard"
-        class="result-card"
-        aria-live="polite"
-      ></div>
+          <span id="stateBadge" class="state-badge">WAITING</span>
+        </div>
+
+        <div id="gameBody"></div>
+        <div id="hostControls" class="action-stack"></div>
+      </section>
+
+      <section id="todayPanel" class="panel" hidden>
+        <div class="section-heading">
+          <h2>오늘의 범인</h2>
+        </div>
+
+        <div id="todayRanking" class="ranking-list"></div>
+      </section>
     </section>
   </main>
+
+  <div id="confirmModal" class="modal-backdrop" hidden>
+    <div
+      class="modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirmTitle"
+    >
+      <h2 id="confirmTitle">이 설정으로 방을 만들까요?</h2>
+
+      <div id="confirmSummary" class="confirm-summary"></div>
+
+      <div class="modal-actions">
+        <button id="cancelCreate" class="secondary-button" type="button">
+          취소
+        </button>
+
+        <button id="confirmCreate" class="primary-button" type="button">
+          방 생성
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
 
   <script src="app.js"></script>
 </body>
