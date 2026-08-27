@@ -830,7 +830,6 @@ function renderPositions(room) {
   `;
 }
 
-
 function renderGame(
   room,
   isHost,
@@ -852,11 +851,9 @@ function renderGame(
       .textContent =
         "포지션 대기";
 
-
     const allIn =
       room.onlineCount ===
       room.members.length;
-
 
     body.innerHTML =
       `
@@ -868,7 +865,6 @@ function renderGame(
           }
         </div>
       `;
-
 
     if (isHost) {
       controls.innerHTML =
@@ -897,10 +893,8 @@ function renderGame(
       .textContent =
         "게임 진행 중";
 
-
     body.innerHTML =
       renderPositions(room);
-
 
     if (isHost) {
       if (
@@ -957,13 +951,36 @@ function renderGame(
 
 
     if (!myActive) {
+      const existingProgress =
+        document.getElementById(
+          "voteProgress"
+        );
+
+      const existingNotice =
+        body.querySelector(
+          ".notice"
+        );
+
+      if (
+        existingProgress &&
+        existingNotice
+      ) {
+        existingProgress.textContent =
+          `${room.voteCount} / ${room.members.length}명 투표 완료`;
+
+        return;
+      }
+
       body.innerHTML =
         `
           <div class="notice">
             참가자로 입장해야 투표할 수 있습니다.
           </div>
 
-          <p class="vote-progress">
+          <p
+            class="vote-progress"
+            id="voteProgress"
+          >
             ${room.voteCount} / ${room.members.length}명 투표 완료
           </p>
         `;
@@ -975,6 +992,26 @@ function renderGame(
     if (
       room.myVoteSubmitted
     ) {
+      const existingProgress =
+        document.getElementById(
+          "voteProgress"
+        );
+
+      const existingNotice =
+        body.querySelector(
+          ".notice"
+        );
+
+      if (
+        existingProgress &&
+        existingNotice
+      ) {
+        existingProgress.textContent =
+          `${room.voteCount} / ${room.members.length}명 투표 완료`;
+
+        return;
+      }
+
       body.innerHTML =
         `
           <div class="notice">
@@ -982,17 +1019,54 @@ function renderGame(
             모든 참가자의 투표를 기다리는 중입니다.
           </div>
 
-          <p class="vote-progress">
+          <p
+            class="vote-progress"
+            id="voteProgress"
+          >
             ${room.voteCount} / ${room.members.length}명 투표 완료
           </p>
         `;
-    } else {
-      body.innerHTML =
-        voteFormHtml(room);
 
-      $("submitVoteButton").onclick =
-        submitVote;
+      return;
     }
+
+
+    /*
+     * 투표 폼이 이미 존재하면
+     * polling 때 DOM을 다시 만들지 않는다.
+     *
+     * 따라서:
+     * - 선택한 값 유지
+     * - 열린 select 유지
+     * - 모바일 선택창 강제 종료 방지
+     *
+     * 투표 진행 숫자만 변경한다.
+     */
+    const existingForm =
+      document.getElementById(
+        "submitVoteButton"
+      );
+
+    if (existingForm) {
+      const progress =
+        document.getElementById(
+          "voteProgress"
+        );
+
+      if (progress) {
+        progress.textContent =
+          `${room.voteCount} / ${room.members.length}명 투표 완료`;
+      }
+
+      return;
+    }
+
+
+    body.innerHTML =
+      voteFormHtml(room);
+
+    $("submitVoteButton").onclick =
+      submitVote;
 
     return;
   }
@@ -1005,10 +1079,8 @@ function renderGame(
       .textContent =
         "투표 결과";
 
-
     body.innerHTML =
       resultHtml(room);
-
 
     if (isHost) {
       controls.innerHTML =
@@ -1024,9 +1096,10 @@ function renderGame(
       $("nextRoundButton").onclick =
         () => hostAction("next");
     }
+
+    return;
   }
 }
-
 
 function voteFormHtml(room) {
   const options =
@@ -1103,7 +1176,10 @@ function voteFormHtml(room) {
         투표 완료
       </button>
 
-      <p class="vote-progress">
+      <p
+        class="vote-progress"
+        id="voteProgress"
+      >
         ${room.voteCount} / ${room.members.length}명 투표 완료
       </p>
 
