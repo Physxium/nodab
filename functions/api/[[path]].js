@@ -16,9 +16,11 @@ const ONLINE_MS =
   20 * 1000;
 
 
-export async function onRequest(
-  context
-) {
+/* =========================================================
+   ROUTER
+   ========================================================= */
+
+export async function onRequest(context) {
   try {
     if (!context.env.DB) {
       return json(
@@ -30,95 +32,81 @@ export async function onRequest(
       );
     }
 
-
     const url =
-      new URL(
-        context.request.url
-      );
-
+      new URL(context.request.url);
 
     const parts =
       url.pathname
         .split("/")
         .filter(Boolean);
 
-
     const action =
       parts[1] || "";
 
+    const method =
+      context.request.method;
 
-    if (
-      context.request.method ===
-      "OPTIONS"
-    ) {
+
+    if (method === "OPTIONS") {
       return new Response(
         null,
-        {
-          status: 204
-        }
+        { status: 204 }
       );
     }
 
 
     if (
       action === "create" &&
-      context.request.method ===
-      "POST"
+      method === "POST"
     ) {
       return createRoom(context);
     }
 
-
     if (
       action === "state" &&
-      context.request.method ===
-      "GET"
+      method === "GET"
     ) {
       return getState(context);
     }
 
-
     if (
       action === "join" &&
-      context.request.method ===
-      "POST"
+      method === "POST"
     ) {
       return joinRoom(context);
     }
 
-
     if (
       action === "heartbeat" &&
-      context.request.method ===
-      "POST"
+      method === "POST"
     ) {
       return heartbeat(context);
     }
 
-
     if (
       action === "host" &&
-      context.request.method ===
-      "POST"
+      method === "POST"
     ) {
       return hostAction(context);
     }
 
-
     if (
       action === "vote" &&
-      context.request.method ===
-      "POST"
+      method === "POST"
     ) {
       return vote(context);
     }
 
+    if (
+      action === "history" &&
+      method === "GET"
+    ) {
+      return getMatchHistory(context);
+    }
+
 
     return json(
-      {
-        error:
-          "Not found"
-      },
+      { error: "Not found" },
       404
     );
   } catch (error) {
@@ -135,6 +123,10 @@ export async function onRequest(
 }
 
 
+/* =========================================================
+   방 생성
+   ========================================================= */
+
 async function createRoom({
   request,
   env
@@ -142,23 +134,18 @@ async function createRoom({
   const body =
     await request.json();
 
-
   const queueType =
-    Number(
-      body.queueType
-    );
-
+    Number(body.queueType);
 
   const members =
     Array.isArray(body.members)
       ? body.members
-          .map(
-            (v) =>
-              String(v).trim()
-          )
-          .filter(Boolean)
+        .map(
+          value =>
+            String(value).trim()
+        )
+        .filter(Boolean)
       : [];
-
 
   const unique =
     [...new Set(members)];
@@ -178,34 +165,16 @@ async function createRoom({
   }
 
 
-  if (
-    unique.some(
-      (v) => v.length > 20
-    )
-  ) {
-    return json(
-      {
-        error:
-          "이름이 너무 깁니다."
-      },
-      400
-    );
-  }
-
-
   const culpritVoting =
     !!body.culpritVoting;
-
 
   const exile =
     culpritVoting &&
     !!body.exile;
 
-
   const todayCulprit =
     culpritVoting &&
     !!body.todayCulprit;
-
 
   const now =
     Date.now();
@@ -217,37 +186,34 @@ async function createRoom({
   );
 
 
-  let roomId;
-
+  let roomId = null;
 
   for (
     let i = 0;
     i < 5;
     i++
   ) {
-    roomId =
+    const candidate =
       randomId(10);
-
 
     const exists =
       await env.DB
         .prepare(
           `
-            SELECT 1
-            FROM rooms
-            WHERE id = ?
+          SELECT 1
+          FROM rooms
+          WHERE id = ?
           `
         )
-        .bind(roomId)
+        .bind(candidate)
         .first();
 
-
     if (!exists) {
+      roomId =
+        candidate;
+
       break;
     }
-
-
-    roomId = null;
   }
 
 
@@ -265,11 +231,10 @@ async function createRoom({
   const hostToken =
     randomSecret();
 
-
   const totals =
     Object.fromEntries(
       unique.map(
-        (name) => [
+        name => [
           name,
           0
         ]
@@ -280,55 +245,43 @@ async function createRoom({
   await env.DB
     .prepare(
       `
-        INSERT INTO rooms (
-          id,
-          host_token,
-          queue_type,
-          members_json,
+      INSERT INTO rooms (
+        id,
+        host_token,
+        queue_type,
+        members_json,
 
-          culprit_voting,
-          exile_enabled,
-          today_enabled,
+        culprit_voting,
+        exile_enabled,
+        today_enabled,
 
-          state,
-          round,
+        state,
+        round,
 
-          positions_json,
-          result_json,
+        positions_json,
+        result_json,
 
-          pending_exile_member,
-          pending_exile_position,
+        pending_exile_member,
+        pending_exile_position,
 
-          totals_json,
+        totals_json,
 
-          created_at,
-          updated_at
-        )
+        created_at,
+        updated_at
+      )
 
-        VALUES (
-          ?,
-          ?,
-          ?,
-          ?,
-
-          ?,
-          ?,
-          ?,
-
-          'WAITING',
-          1,
-
-          NULL,
-          NULL,
-
-          NULL,
-          NULL,
-
-          ?,
-
-          ?,
-          ?
-        )
+      VALUES (
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        'WAITING',
+        1,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        ?,
+        ?, ?
+      )
       `
     )
     .bind(
@@ -356,24 +309,22 @@ async function createRoom({
 }
 
 
+/* =========================================================
+   방 상태
+   ========================================================= */
+
 async function getState({
   request,
   env
 }) {
   const url =
-    new URL(
-      request.url
-    );
-
+    new URL(request.url);
 
   const roomId =
-    url.searchParams.get("r") ||
-    "";
+    url.searchParams.get("r") || "";
 
-
-  const pt =
-    url.searchParams.get("pt") ||
-    "";
+  const participantToken =
+    url.searchParams.get("pt") || "";
 
 
   const room =
@@ -400,14 +351,13 @@ async function getState({
 
   if (
     now -
-      room.updated_at >
+    Number(room.updated_at) >
     ROOM_TTL_MS
   ) {
     await deleteRoom(
       env.DB,
       roomId
     );
-
 
     return json(
       {
@@ -423,14 +373,14 @@ async function getState({
     await env.DB
       .prepare(
         `
-          SELECT
-            member_name,
-            participant_token,
-            last_seen
+        SELECT
+          member_name,
+          participant_token,
+          last_seen
 
-          FROM participants
+        FROM participants
 
-          WHERE room_id = ?
+        WHERE room_id = ?
         `
       )
       .bind(roomId)
@@ -442,51 +392,48 @@ async function getState({
       participantRows.results ||
       []
     ).map(
-      (row) => ({
+      row => ({
         member:
           row.member_name,
 
         online:
           now -
-            Number(
-              row.last_seen
-            ) <=
+          Number(row.last_seen) <=
           ONLINE_MS,
 
         mine:
-          !!pt &&
+          !!participantToken &&
           row.participant_token ===
-            pt
+          participantToken
       })
     );
 
 
   const onlineCount =
     participants.filter(
-      (p) => p.online
+      participant =>
+        participant.online
     ).length;
 
 
   let voteCount = 0;
-
-  let myVoteSubmitted =
-    false;
+  let myVoteSubmitted = false;
 
 
   if (
     room.state === "VOTING"
   ) {
-    const countRow =
+    const count =
       await env.DB
         .prepare(
           `
-            SELECT
-              COUNT(*) AS c
+          SELECT
+            COUNT(*) AS count
 
-            FROM votes
+          FROM votes
 
-            WHERE room_id = ?
-              AND round = ?
+          WHERE room_id = ?
+            AND round = ?
           `
         )
         .bind(
@@ -498,33 +445,34 @@ async function getState({
 
     voteCount =
       Number(
-        countRow?.c || 0
+        count?.count || 0
       );
 
 
-    if (pt) {
+    if (participantToken) {
       const me =
-        participantRows
-          .results
-          ?.find(
-            (row) =>
-              row.participant_token ===
-              pt
-          );
+        (
+          participantRows.results ||
+          []
+        ).find(
+          row =>
+            row.participant_token ===
+            participantToken
+        );
 
 
       if (me) {
-        const v =
+        const existingVote =
           await env.DB
             .prepare(
               `
-                SELECT 1
+              SELECT 1
 
-                FROM votes
+              FROM votes
 
-                WHERE room_id = ?
-                  AND round = ?
-                  AND voter_name = ?
+              WHERE room_id = ?
+                AND round = ?
+                AND voter_name = ?
               `
             )
             .bind(
@@ -536,7 +484,7 @@ async function getState({
 
 
         myVoteSubmitted =
-          !!v;
+          !!existingVote;
       }
     }
   }
@@ -558,7 +506,7 @@ async function getState({
   const todayRanking =
     members
       .map(
-        (member) => ({
+        member => ({
           member,
 
           score:
@@ -571,12 +519,86 @@ async function getState({
       .sort(
         (a, b) =>
           b.score -
-            a.score ||
+          a.score ||
           a.member.localeCompare(
             b.member,
             "ko"
           )
       );
+
+
+  const historyRows =
+    await env.DB
+      .prepare(
+        `
+        SELECT
+          rh.round,
+          rh.queue_type,
+          rh.result,
+          rh.positions_json,
+          rh.culprit,
+          rh.played_at,
+
+          CASE
+            WHEN mh.id IS NULL
+            THEN 0
+            ELSE 1
+          END AS exported
+
+        FROM round_history rh
+
+        LEFT JOIN match_history mh
+          ON mh.source_room_id =
+             rh.room_id
+         AND mh.source_round =
+             rh.round
+
+        WHERE rh.room_id = ?
+
+        ORDER BY rh.round DESC
+        `
+      )
+      .bind(roomId)
+      .all();
+
+
+  const roundHistory =
+    (
+      historyRows.results ||
+      []
+    ).map(
+      row => ({
+        round:
+          row.round,
+
+        queueType:
+          row.queue_type,
+
+        result:
+          row.result,
+
+        positions:
+          JSON.parse(
+            row.positions_json
+          ),
+
+        culprit:
+          row.culprit,
+
+        playedAt:
+          row.played_at,
+
+        exported:
+          !!row.exported
+      })
+    );
+
+
+  const exportableCount =
+    roundHistory.filter(
+      row =>
+        !row.exported
+    ).length;
 
 
   return json({
@@ -608,34 +630,38 @@ async function getState({
     positions:
       room.positions_json
         ? JSON.parse(
-            room.positions_json
-          )
+          room.positions_json
+        )
         : null,
 
     result:
-      room.state ===
-        "RESULT" &&
-      room.result_json
+      room.state === "RESULT" &&
+        room.result_json
         ? JSON.parse(
-            room.result_json
-          )
+          room.result_json
+        )
         : null,
 
     participants,
-
     onlineCount,
 
     voteCount,
-
     myVoteSubmitted,
 
     todayRanking:
       room.today_enabled
         ? todayRanking
-        : []
+        : [],
+
+    roundHistory,
+    exportableCount
   });
 }
 
+
+/* =========================================================
+   참가
+   ========================================================= */
 
 async function joinRoom({
   request,
@@ -709,13 +735,12 @@ async function joinRoom({
     await env.DB
       .prepare(
         `
-          SELECT
-            member_name
+        SELECT member_name
 
-          FROM participants
+        FROM participants
 
-          WHERE room_id = ?
-            AND participant_token = ?
+        WHERE room_id = ?
+          AND participant_token = ?
         `
       )
       .bind(
@@ -728,15 +753,15 @@ async function joinRoom({
   if (
     existingByToken &&
     existingByToken.member_name !==
-      member
+    member
   ) {
     await env.DB
       .prepare(
         `
-          DELETE FROM participants
+        DELETE FROM participants
 
-          WHERE room_id = ?
-            AND participant_token = ?
+        WHERE room_id = ?
+          AND participant_token = ?
         `
       )
       .bind(
@@ -751,13 +776,13 @@ async function joinRoom({
     await env.DB
       .prepare(
         `
-          SELECT
-            participant_token
+        SELECT
+          participant_token
 
-          FROM participants
+        FROM participants
 
-          WHERE room_id = ?
-            AND member_name = ?
+        WHERE room_id = ?
+          AND member_name = ?
         `
       )
       .bind(
@@ -770,7 +795,7 @@ async function joinRoom({
   if (
     claimed &&
     claimed.participant_token !==
-      participantToken
+    participantToken
   ) {
     return json(
       {
@@ -785,33 +810,27 @@ async function joinRoom({
   await env.DB
     .prepare(
       `
-        INSERT INTO participants (
-          room_id,
-          member_name,
-          participant_token,
-          joined_at,
-          last_seen
-        )
+      INSERT INTO participants (
+        room_id,
+        member_name,
+        participant_token,
+        joined_at,
+        last_seen
+      )
 
-        VALUES (
-          ?,
-          ?,
-          ?,
-          ?,
-          ?
-        )
+      VALUES (?, ?, ?, ?, ?)
 
-        ON CONFLICT(
-          room_id,
-          member_name
-        )
+      ON CONFLICT(
+        room_id,
+        member_name
+      )
 
-        DO UPDATE SET
-          participant_token =
-            excluded.participant_token,
+      DO UPDATE SET
+        participant_token =
+          excluded.participant_token,
 
-          last_seen =
-            excluded.last_seen
+        last_seen =
+          excluded.last_seen
       `
     )
     .bind(
@@ -836,6 +855,10 @@ async function joinRoom({
   });
 }
 
+
+/* =========================================================
+   접속 상태
+   ========================================================= */
 
 async function heartbeat({
   request,
@@ -869,12 +892,12 @@ async function heartbeat({
   await env.DB
     .prepare(
       `
-        UPDATE participants
+      UPDATE participants
 
-        SET last_seen = ?
+      SET last_seen = ?
 
-        WHERE room_id = ?
-          AND participant_token = ?
+      WHERE room_id = ?
+        AND participant_token = ?
       `
     )
     .bind(
@@ -890,6 +913,10 @@ async function heartbeat({
   });
 }
 
+
+/* =========================================================
+   방장 동작
+   ========================================================= */
 
 async function hostAction({
   request,
@@ -923,7 +950,8 @@ async function hostAction({
 
   if (
     !hostToken ||
-    hostToken !== room.host_token
+    hostToken !==
+    room.host_token
   ) {
     return json(
       {
@@ -938,12 +966,15 @@ async function hostAction({
   const now =
     Date.now();
 
-
   const members =
     JSON.parse(
       room.members_json
     );
 
+
+  /* -------------------------------------------------------
+     포지션 돌리기
+     ------------------------------------------------------- */
 
   if (
     action === "roll"
@@ -966,13 +997,13 @@ async function hostAction({
       await env.DB
         .prepare(
           `
-            SELECT
-              member_name,
-              last_seen
+          SELECT
+            member_name,
+            last_seen
 
-            FROM participants
+          FROM participants
 
-            WHERE room_id = ?
+          WHERE room_id = ?
           `
         )
         .bind(roomId)
@@ -986,15 +1017,15 @@ async function hostAction({
           []
         )
           .filter(
-            (row) =>
+            row =>
               now -
-                Number(
-                  row.last_seen
-                ) <=
+              Number(
+                row.last_seen
+              ) <=
               ONLINE_MS
           )
           .map(
-            (row) =>
+            row =>
               row.member_name
           )
       );
@@ -1002,7 +1033,7 @@ async function hostAction({
 
     if (
       !members.every(
-        (name) =>
+        name =>
           online.has(name)
       )
     ) {
@@ -1028,17 +1059,19 @@ async function hostAction({
     await env.DB
       .prepare(
         `
-          UPDATE rooms
+        UPDATE rooms
 
-          SET
-            state = 'PLAYING',
-            positions_json = ?,
-            result_json = NULL,
-            pending_exile_member = NULL,
-            pending_exile_position = NULL,
-            updated_at = ?
+        SET
+          state = 'PLAYING',
+          positions_json = ?,
+          result_json = NULL,
 
-          WHERE id = ?
+          pending_exile_member = NULL,
+          pending_exile_position = NULL,
+
+          updated_at = ?
+
+        WHERE id = ?
         `
       )
       .bind(
@@ -1057,22 +1090,13 @@ async function hostAction({
   }
 
 
+  /* -------------------------------------------------------
+     승리
+     ------------------------------------------------------- */
+
   if (
     action === "win"
   ) {
-    if (
-      !room.culprit_voting
-    ) {
-      return json(
-        {
-          error:
-            "범인 투표가 꺼진 방입니다."
-        },
-        409
-      );
-    }
-
-
     if (
       room.state !==
       "PLAYING"
@@ -1087,28 +1111,21 @@ async function hostAction({
     }
 
 
-    await env.DB
-      .prepare(
-        `
-          UPDATE rooms
+    await saveRoundHistory(
+      env.DB,
+      room,
+      "WIN",
+      null,
+      now
+    );
 
-          SET
-            state = 'WAITING',
-            round = round + 1,
-            positions_json = NULL,
-            result_json = NULL,
-            pending_exile_member = NULL,
-            pending_exile_position = NULL,
-            updated_at = ?
 
-          WHERE id = ?
-        `
-      )
-      .bind(
-        now,
-        roomId
-      )
-      .run();
+    await advanceRound(
+      env.DB,
+      roomId,
+      now,
+      true
+    );
 
 
     return json({
@@ -1117,22 +1134,13 @@ async function hostAction({
   }
 
 
+  /* -------------------------------------------------------
+     패배
+     ------------------------------------------------------- */
+
   if (
     action === "loss"
   ) {
-    if (
-      !room.culprit_voting
-    ) {
-      return json(
-        {
-          error:
-            "범인 투표가 꺼진 방입니다."
-        },
-        409
-      );
-    }
-
-
     if (
       room.state !==
       "PLAYING"
@@ -1147,13 +1155,58 @@ async function hostAction({
     }
 
 
+    /*
+     * 범인 투표 OFF:
+     * 패배 기록만 저장하고 바로 다음 판
+     */
+
+    if (
+      !room.culprit_voting
+    ) {
+      await saveRoundHistory(
+        env.DB,
+        room,
+        "LOSS",
+        null,
+        now
+      );
+
+
+      await advanceRound(
+        env.DB,
+        roomId,
+        now,
+        true
+      );
+
+
+      return json({
+        ok: true
+      });
+    }
+
+
+    /*
+     * 범인 투표 ON:
+     * 패배 기록 생성 후 투표 단계
+     */
+
+    await saveRoundHistory(
+      env.DB,
+      room,
+      "LOSS",
+      null,
+      now
+    );
+
+
     await env.DB
       .prepare(
         `
-          DELETE FROM votes
+        DELETE FROM votes
 
-          WHERE room_id = ?
-            AND round = ?
+        WHERE room_id = ?
+          AND round = ?
         `
       )
       .bind(
@@ -1166,13 +1219,13 @@ async function hostAction({
     await env.DB
       .prepare(
         `
-          UPDATE rooms
+        UPDATE rooms
 
-          SET
-            state = 'VOTING',
-            updated_at = ?
+        SET
+          state = 'VOTING',
+          updated_at = ?
 
-          WHERE id = ?
+        WHERE id = ?
         `
       )
       .bind(
@@ -1188,56 +1241,16 @@ async function hostAction({
   }
 
 
+  /* -------------------------------------------------------
+     다음 판
+     RESULT → WAITING
+
+     단순 모드에서는 승/패 입력 순간 이미 다음 라운드로 넘어감.
+     ------------------------------------------------------- */
+
   if (
     action === "next"
   ) {
-    if (
-      !room.culprit_voting
-    ) {
-      if (
-        room.state !==
-        "PLAYING"
-      ) {
-        return json(
-          {
-            error:
-              "게임 진행 중일 때만 다음 판으로 갈 수 있습니다."
-          },
-          409
-        );
-      }
-
-
-      await env.DB
-        .prepare(
-          `
-            UPDATE rooms
-
-            SET
-              state = 'WAITING',
-              round = round + 1,
-              positions_json = NULL,
-              result_json = NULL,
-              pending_exile_member = NULL,
-              pending_exile_position = NULL,
-              updated_at = ?
-
-            WHERE id = ?
-          `
-        )
-        .bind(
-          now,
-          roomId
-        )
-        .run();
-
-
-      return json({
-        ok: true
-      });
-    }
-
-
     if (
       room.state !==
       "RESULT"
@@ -1245,26 +1258,76 @@ async function hostAction({
       return json(
         {
           error:
-            "투표 결과 공개 후 다음 판으로 갈 수 있습니다."
+            "결과 공개 후 다음 판으로 갈 수 있습니다."
         },
         409
       );
     }
 
 
+    await advanceRound(
+      env.DB,
+      roomId,
+      now,
+      false
+    );
+
+
+    return json({
+      ok: true
+    });
+  }
+
+
+  /* -------------------------------------------------------
+     오늘 전적 내보내기
+     ------------------------------------------------------- */
+
+  if (
+    action === "export"
+  ) {
+    const before =
+      await env.DB
+        .prepare(
+          `
+          SELECT
+            COUNT(*) AS count
+
+          FROM match_history
+
+          WHERE source_room_id = ?
+          `
+        )
+        .bind(roomId)
+        .first();
+
+
     await env.DB
       .prepare(
         `
-          UPDATE rooms
+        INSERT OR IGNORE
+        INTO match_history (
+          source_room_id,
+          source_round,
+          queue_type,
+          result,
+          positions_json,
+          played_at,
+          exported_at
+        )
 
-          SET
-            state = 'WAITING',
-            round = round + 1,
-            positions_json = NULL,
-            result_json = NULL,
-            updated_at = ?
+        SELECT
+          room_id,
+          round,
+          queue_type,
+          result,
+          positions_json,
+          played_at,
+          ?
 
-          WHERE id = ?
+        FROM round_history
+
+        WHERE room_id = ?
         `
       )
       .bind(
@@ -1274,8 +1337,34 @@ async function hostAction({
       .run();
 
 
+    const after =
+      await env.DB
+        .prepare(
+          `
+          SELECT
+            COUNT(*) AS count
+
+          FROM match_history
+
+          WHERE source_room_id = ?
+          `
+        )
+        .bind(roomId)
+        .first();
+
+
+    const exported =
+      Number(
+        after?.count || 0
+      ) -
+      Number(
+        before?.count || 0
+      );
+
+
     return json({
-      ok: true
+      ok: true,
+      exported
     });
   }
 
@@ -1289,6 +1378,10 @@ async function hostAction({
   );
 }
 
+
+/* =========================================================
+   범인 투표
+   ========================================================= */
 
 async function vote({
   request,
@@ -1318,7 +1411,8 @@ async function vote({
 
   if (
     !room.culprit_voting ||
-    room.state !== "VOTING"
+    room.state !==
+    "VOTING"
   ) {
     return json(
       {
@@ -1334,13 +1428,12 @@ async function vote({
     await env.DB
       .prepare(
         `
-          SELECT
-            member_name
+        SELECT member_name
 
-          FROM participants
+        FROM participants
 
-          WHERE room_id = ?
-            AND participant_token = ?
+        WHERE room_id = ?
+          AND participant_token = ?
         `
       )
       .bind(
@@ -1376,7 +1469,7 @@ async function vote({
       body.secondary
     ) ||
     body.primary ===
-      body.secondary
+    body.secondary
   ) {
     return json(
       {
@@ -1412,25 +1505,17 @@ async function vote({
     await env.DB
       .prepare(
         `
-          INSERT INTO votes (
-            room_id,
-            round,
-            voter_name,
-            primary_culprit,
-            secondary_culprit,
-            exile_position,
-            created_at
-          )
+        INSERT INTO votes (
+          room_id,
+          round,
+          voter_name,
+          primary_culprit,
+          secondary_culprit,
+          exile_position,
+          created_at
+        )
 
-          VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-          )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         `
       )
       .bind(
@@ -1467,17 +1552,17 @@ async function vote({
   );
 
 
-  const countRow =
+  const count =
     await env.DB
       .prepare(
         `
-          SELECT
-            COUNT(*) AS c
+        SELECT
+          COUNT(*) AS count
 
-          FROM votes
+        FROM votes
 
-          WHERE room_id = ?
-            AND round = ?
+        WHERE room_id = ?
+          AND round = ?
         `
       )
       .bind(
@@ -1489,8 +1574,7 @@ async function vote({
 
   if (
     Number(
-      countRow?.c ||
-      0
+      count?.count || 0
     ) >=
     members.length
   ) {
@@ -1509,6 +1593,10 @@ async function vote({
 }
 
 
+/* =========================================================
+   투표 집계
+   ========================================================= */
+
 async function finalizeVote(
   db,
   room,
@@ -1519,15 +1607,15 @@ async function finalizeVote(
     await db
       .prepare(
         `
-          SELECT
-            primary_culprit,
-            secondary_culprit,
-            exile_position
+        SELECT
+          primary_culprit,
+          secondary_culprit,
+          exile_position
 
-          FROM votes
+        FROM votes
 
-          WHERE room_id = ?
-            AND round = ?
+        WHERE room_id = ?
+          AND round = ?
         `
       )
       .bind(
@@ -1540,8 +1628,8 @@ async function finalizeVote(
   const scores =
     Object.fromEntries(
       members.map(
-        (m) => [
-          m,
+        member => [
+          member,
           0
         ]
       )
@@ -1551,8 +1639,8 @@ async function finalizeVote(
   const primaryCount =
     Object.fromEntries(
       members.map(
-        (m) => [
-          m,
+        member => [
+          member,
           0
         ]
       )
@@ -1562,8 +1650,8 @@ async function finalizeVote(
   const exileCount =
     Object.fromEntries(
       POSITIONS.map(
-        (p) => [
-          p,
+        position => [
+          position,
           0
         ]
       )
@@ -1572,7 +1660,7 @@ async function finalizeVote(
 
   for (
     const row of
-      rows.results || []
+    rows.results || []
   ) {
     scores[
       row.primary_culprit
@@ -1608,8 +1696,8 @@ async function finalizeVote(
 
   let candidates =
     members.filter(
-      (m) =>
-        scores[m] ===
+      member =>
+        scores[member] ===
         maxScore
     );
 
@@ -1620,16 +1708,20 @@ async function finalizeVote(
     const maxPrimary =
       Math.max(
         ...candidates.map(
-          (m) =>
-            primaryCount[m]
+          member =>
+            primaryCount[
+            member
+            ]
         )
       );
 
 
     candidates =
       candidates.filter(
-        (m) =>
-          primaryCount[m] ===
+        member =>
+          primaryCount[
+          member
+          ] ===
           maxPrimary
       );
   }
@@ -1637,10 +1729,10 @@ async function finalizeVote(
 
   const culprit =
     candidates[
-      Math.floor(
-        Math.random() *
-        candidates.length
-      )
+    Math.floor(
+      Math.random() *
+      candidates.length
+    )
     ];
 
 
@@ -1661,18 +1753,20 @@ async function finalizeVote(
 
     const exileCandidates =
       POSITIONS.filter(
-        (p) =>
-          exileCount[p] ===
+        position =>
+          exileCount[
+          position
+          ] ===
           maxExile
       );
 
 
     exilePosition =
       exileCandidates[
-        Math.floor(
-          Math.random() *
-          exileCandidates.length
-        )
+      Math.floor(
+        Math.random() *
+        exileCandidates.length
+      )
       ];
   }
 
@@ -1699,7 +1793,7 @@ async function finalizeVote(
   const scoreRows =
     members
       .map(
-        (member) => ({
+        member => ({
           member,
 
           score:
@@ -1707,16 +1801,16 @@ async function finalizeVote(
 
           primaryVotes:
             primaryCount[
-              member
+            member
             ]
         })
       )
       .sort(
         (a, b) =>
           b.score -
-            a.score ||
+          a.score ||
           b.primaryVotes -
-            a.primaryVotes ||
+          a.primaryVotes ||
           a.member.localeCompare(
             b.member,
             "ko"
@@ -1732,25 +1826,55 @@ async function finalizeVote(
   };
 
 
+  /*
+   * 패배 기록에 최종 범인 추가
+   */
+
   await db
     .prepare(
       `
-        UPDATE rooms
+      UPDATE round_history
 
-        SET
-          state = 'RESULT',
-          result_json = ?,
-          totals_json = ?,
-          pending_exile_member = ?,
-          pending_exile_position = ?,
-          updated_at = ?
+      SET culprit = ?
 
-        WHERE id = ?
+      WHERE room_id = ?
+        AND round = ?
       `
     )
     .bind(
-      JSON.stringify(result),
-      JSON.stringify(totals),
+      culprit,
+      room.id,
+      room.round
+    )
+    .run();
+
+
+  await db
+    .prepare(
+      `
+      UPDATE rooms
+
+      SET
+        state = 'RESULT',
+        result_json = ?,
+        totals_json = ?,
+
+        pending_exile_member = ?,
+        pending_exile_position = ?,
+
+        updated_at = ?
+
+      WHERE id = ?
+      `
+    )
+    .bind(
+      JSON.stringify(
+        result
+      ),
+
+      JSON.stringify(
+        totals
+      ),
 
       room.exile_enabled
         ? culprit
@@ -1767,16 +1891,207 @@ async function finalizeVote(
 }
 
 
+/* =========================================================
+   라운드 기록 저장
+   ========================================================= */
+
+async function saveRoundHistory(
+  db,
+  room,
+  result,
+  culprit,
+  playedAt
+) {
+  if (!room.positions_json) {
+    return;
+  }
+
+
+  const positions =
+    JSON.parse(
+      room.positions_json
+    );
+
+
+  const normalized =
+    normalizePositions(
+      positions
+    );
+
+
+  await db
+    .prepare(
+      `
+      INSERT OR REPLACE
+      INTO round_history (
+        room_id,
+        round,
+        queue_type,
+        result,
+        positions_json,
+        culprit,
+        played_at
+      )
+
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      `
+    )
+    .bind(
+      room.id,
+      room.round,
+      room.queue_type,
+      result,
+
+      JSON.stringify(
+        normalized
+      ),
+
+      culprit,
+      playedAt
+    )
+    .run();
+}
+
+
+/* =========================================================
+   최근 영구 전적
+   ========================================================= */
+
+async function getMatchHistory({
+  request,
+  env
+}) {
+  const url =
+    new URL(request.url);
+
+
+  const requestedLimit =
+    Number(
+      url.searchParams.get(
+        "limit"
+      ) || 5
+    );
+
+
+  const requestedOffset =
+    Number(
+      url.searchParams.get(
+        "offset"
+      ) || 0
+    );
+
+
+  const limit =
+    Math.min(
+      Math.max(
+        requestedLimit,
+        1
+      ),
+      50
+    );
+
+
+  const offset =
+    Math.max(
+      requestedOffset,
+      0
+    );
+
+
+  const rows =
+    await env.DB
+      .prepare(
+        `
+        SELECT
+          id,
+          queue_type,
+          result,
+          positions_json,
+          played_at
+
+        FROM match_history
+
+        ORDER BY
+          played_at DESC,
+          id DESC
+
+        LIMIT ?
+        OFFSET ?
+        `
+      )
+      .bind(
+        limit + 1,
+        offset
+      )
+      .all();
+
+
+  const allRows =
+    rows.results || [];
+
+
+  const hasMore =
+    allRows.length >
+    limit;
+
+
+  const visibleRows =
+    allRows.slice(
+      0,
+      limit
+    );
+
+
+  return json({
+    matches:
+      visibleRows.map(
+        row => ({
+          id:
+            row.id,
+
+          queueType:
+            row.queue_type,
+
+          result:
+            row.result,
+
+          positions:
+            JSON.parse(
+              row.positions_json
+            ),
+
+          playedAt:
+            row.played_at
+        })
+      ),
+
+    hasMore,
+
+    nextOffset:
+      offset +
+      visibleRows.length
+  });
+}
+
+
+/* =========================================================
+   포지션 생성
+   ========================================================= */
+
 function makePositions(
   queueType,
   members,
   exileMember,
   exilePosition
 ) {
+  /*
+   * 5인큐
+   */
+
   if (
-    queueType === 5
+    Number(queueType) === 5
   ) {
-    const rows = [];
+    const assignments = [];
 
     const remainingMembers =
       [...members];
@@ -1795,7 +2110,7 @@ function makePositions(
         exilePosition
       )
     ) {
-      rows.push({
+      assignments.push({
         player:
           exileMember,
 
@@ -1830,51 +2145,52 @@ function makePositions(
     );
 
 
-    for (
-      let i = 0;
-      i <
-      remainingMembers.length;
-      i++
-    ) {
-      rows.push({
-        player:
-          remainingMembers[i],
+    remainingMembers.forEach(
+      (player, index) => {
+        assignments.push({
+          player,
 
-        position:
-          remainingPositions[i]
-      });
-    }
+          position:
+            remainingPositions[
+            index
+            ]
+        });
+      }
+    );
 
 
     return POSITIONS.map(
-      (position) =>
-        rows.find(
-          (row) =>
-            row.position ===
+      position =>
+        assignments.find(
+          assignment =>
+            assignment.position ===
             position
         )
     );
   }
 
 
-  const players =
-    [...members];
+  /*
+   * 3인큐
+   *
+   * 주 포지션만 3개 배정.
+   * 부 포지션은 더 이상 생성하지 않음.
+   */
 
 
   const primaryMap = {};
 
-
-  const available =
+  const availablePositions =
     [...POSITIONS];
 
 
   if (
     exileMember &&
     exilePosition &&
-    players.includes(
+    members.includes(
       exileMember
     ) &&
-    available.includes(
+    availablePositions.includes(
       exilePosition
     )
   ) {
@@ -1884,8 +2200,8 @@ function makePositions(
       exilePosition;
 
 
-    available.splice(
-      available.indexOf(
+    availablePositions.splice(
+      availablePositions.indexOf(
         exilePosition
       ),
       1
@@ -1893,103 +2209,191 @@ function makePositions(
   }
 
 
-  const remainingPlayers =
-    players.filter(
-      (p) =>
-        !primaryMap[p]
+  const remainingMembers =
+    members.filter(
+      member =>
+        !primaryMap[member]
     );
 
 
-  shuffle(available);
+  shuffle(
+    availablePositions
+  );
 
 
-  remainingPlayers.forEach(
-    (p, i) => {
-      primaryMap[p] =
-        available[i];
+  remainingMembers.forEach(
+    (member, index) => {
+      primaryMap[member] =
+        availablePositions[
+        index
+        ];
     }
   );
 
 
-  return players.map(
-    (player) => {
-      const primary =
-        primaryMap[
-          player
-        ];
+  return members.map(
+    player => ({
+      player,
 
-
-      const secondaryPool =
-        POSITIONS.filter(
-          (p) =>
-            p !== primary
-        );
-
-
-      const secondary =
-        secondaryPool[
-          Math.floor(
-            Math.random() *
-            secondaryPool.length
-          )
-        ];
-
-
-      return {
-        player,
-        primary,
-        secondary
-      };
-    }
+      primary:
+        primaryMap[player]
+    })
   );
 }
 
 
-function shuffle(array) {
+/* =========================================================
+   전적용 포지션 표준화
+   항상 TOP/JG/MID/ADC/SUP 5자리
+   ========================================================= */
+
+function normalizePositions(
+  positions
+) {
+  const result = {
+    "탑": null,
+    "정글": null,
+    "미드": null,
+    "원딜": null,
+    "서폿": null
+  };
+
+
   for (
-    let i =
-      array.length - 1;
-
-    i > 0;
-
-    i--
+    const row of
+    positions || []
   ) {
-    const j =
-      Math.floor(
-        Math.random() *
-        (i + 1)
-      );
+    /*
+     * 5인큐
+     */
+
+    if (
+      row.position &&
+      POSITIONS.includes(
+        row.position
+      )
+    ) {
+      result[
+        row.position
+      ] =
+        row.player;
+
+      continue;
+    }
 
 
-    [
-      array[i],
-      array[j]
-    ] = [
-      array[j],
-      array[i]
-    ];
+    /*
+     * 3인큐
+     */
+
+    if (
+      row.primary &&
+      POSITIONS.includes(
+        row.primary
+      )
+    ) {
+      result[
+        row.primary
+      ] =
+        row.player;
+    }
   }
 
 
-  return array;
+  return result;
 }
 
+
+/* =========================================================
+   다음 라운드
+   ========================================================= */
+
+async function advanceRound(
+  db,
+  roomId,
+  now,
+  clearExile
+) {
+  if (clearExile) {
+    await db
+      .prepare(
+        `
+        UPDATE rooms
+
+        SET
+          state = 'WAITING',
+          round = round + 1,
+          positions_json = NULL,
+          result_json = NULL,
+
+          pending_exile_member = NULL,
+          pending_exile_position = NULL,
+
+          updated_at = ?
+
+        WHERE id = ?
+        `
+      )
+      .bind(
+        now,
+        roomId
+      )
+      .run();
+
+    return;
+  }
+
+
+  /*
+   * 패배 투표 후 다음 판:
+   * 유배 정보를 유지해야 한다.
+   */
+
+  await db
+    .prepare(
+      `
+      UPDATE rooms
+
+      SET
+        state = 'WAITING',
+        round = round + 1,
+        positions_json = NULL,
+        result_json = NULL,
+
+        updated_at = ?
+
+      WHERE id = ?
+      `
+    )
+    .bind(
+      now,
+      roomId
+    )
+    .run();
+}
+
+
+/* =========================================================
+   공통 DB
+   ========================================================= */
 
 async function getRoom(
   db,
   id
 ) {
-  if (!id) return null;
+  if (!id) {
+    return null;
+  }
 
 
   return db
     .prepare(
       `
-        SELECT *
+      SELECT *
 
-        FROM rooms
+      FROM rooms
 
-        WHERE id = ?
+      WHERE id = ?
       `
     )
     .bind(id)
@@ -2015,14 +2419,15 @@ async function getActiveRoom(
 
   if (
     Date.now() -
-      room.updated_at >
+    Number(
+      room.updated_at
+    ) >
     ROOM_TTL_MS
   ) {
     await deleteRoom(
       db,
       id
     );
-
 
     return null;
   }
@@ -2040,11 +2445,11 @@ async function touchRoom(
   await db
     .prepare(
       `
-        UPDATE rooms
+      UPDATE rooms
 
-        SET updated_at = ?
+      SET updated_at = ?
 
-        WHERE id = ?
+      WHERE id = ?
       `
     )
     .bind(
@@ -2068,13 +2473,13 @@ async function cleanupExpired(
     await db
       .prepare(
         `
-          SELECT id
+        SELECT id
 
-          FROM rooms
+        FROM rooms
 
-          WHERE updated_at < ?
+        WHERE updated_at < ?
 
-          LIMIT 100
+        LIMIT 100
         `
       )
       .bind(cutoff)
@@ -2083,7 +2488,7 @@ async function cleanupExpired(
 
   for (
     const row of
-      expired.results || []
+    expired.results || []
   ) {
     await deleteRoom(
       db,
@@ -2093,6 +2498,11 @@ async function cleanupExpired(
 }
 
 
+/* =========================================================
+   방 삭제
+   영구 match_history는 삭제하지 않음
+   ========================================================= */
+
 async function deleteRoom(
   db,
   id
@@ -2101,9 +2511,8 @@ async function deleteRoom(
     db
       .prepare(
         `
-          DELETE FROM votes
-
-          WHERE room_id = ?
+        DELETE FROM votes
+        WHERE room_id = ?
         `
       )
       .bind(id),
@@ -2111,9 +2520,8 @@ async function deleteRoom(
     db
       .prepare(
         `
-          DELETE FROM participants
-
-          WHERE room_id = ?
+        DELETE FROM participants
+        WHERE room_id = ?
         `
       )
       .bind(id),
@@ -2121,13 +2529,55 @@ async function deleteRoom(
     db
       .prepare(
         `
-          DELETE FROM rooms
+        DELETE FROM round_history
+        WHERE room_id = ?
+        `
+      )
+      .bind(id),
 
-          WHERE id = ?
+    db
+      .prepare(
+        `
+        DELETE FROM rooms
+        WHERE id = ?
         `
       )
       .bind(id)
   ]);
+}
+
+
+/* =========================================================
+   Random
+   ========================================================= */
+
+function shuffle(array) {
+  for (
+    let i =
+      array.length - 1;
+
+    i > 0;
+
+    i--
+  ) {
+    const j =
+      Math.floor(
+        Math.random() *
+        (i + 1)
+      );
+
+
+    [
+      array[i],
+      array[j]
+    ] = [
+        array[j],
+        array[i]
+      ];
+  }
+
+
+  return array;
 }
 
 
@@ -2141,21 +2591,21 @@ function randomId(length) {
   );
 
 
-  let out = "";
+  let result = "";
 
 
   for (
-    const b of bytes
+    const byte of bytes
   ) {
-    out +=
+    result +=
       ROOM_ALPHABET[
-        b %
-        ROOM_ALPHABET.length
+      byte %
+      ROOM_ALPHABET.length
       ];
   }
 
 
-  return out;
+  return result;
 }
 
 
@@ -2172,14 +2622,18 @@ function randomSecret() {
   return Array
     .from(
       bytes,
-      (b) =>
-        b
+      byte =>
+        byte
           .toString(16)
           .padStart(2, "0")
     )
     .join("");
 }
 
+
+/* =========================================================
+   Response
+   ========================================================= */
 
 function json(
   data,

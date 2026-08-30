@@ -13,6 +13,7 @@ const PRESET_MEMBERS = [
   "정훈"
 ];
 
+
 const POSITIONS = [
   "탑",
   "정글",
@@ -21,18 +22,26 @@ const POSITIONS = [
   "서폿"
 ];
 
+
 const POSITION_CODES = {
   탑: "TOP",
-  정글: "JUNGLE",
+  정글: "JG",
   미드: "MID",
   원딜: "ADC",
-  서폿: "SUPPORT"
+  서폿: "SUP"
 };
 
-const $ = (id) => document.getElementById(id);
+
+const $ =
+  id =>
+    document.getElementById(id);
+
 
 const roomId =
-  new URLSearchParams(location.search).get("r");
+  new URLSearchParams(
+    location.search
+  ).get("r");
+
 
 let queueSize = 5;
 
@@ -45,67 +54,140 @@ let pollTimer = null;
 let heartbeatTimer = null;
 let toastTimer = null;
 
-const storageKey = (kind) =>
-  `gwailnam:${roomId}:${kind}`;
+let historyOffset = 0;
 
-const getHostToken = () =>
-  roomId
-    ? localStorage.getItem(storageKey("host"))
-    : null;
-
-const getParticipantToken = () =>
-  roomId
-    ? localStorage.getItem(storageKey("participant"))
-    : null;
-
-const getMyMember = () =>
-  roomId
-    ? localStorage.getItem(storageKey("member"))
-    : null;
+const HISTORY_PAGE_SIZE = 5;
 
 
-function randomToken(bytes = 18) {
-  const data = new Uint8Array(bytes);
+
+/* =========================================================
+   STORAGE
+   ========================================================= */
+
+const storageKey =
+  kind =>
+    `gwailnam:${roomId}:${kind}`;
+
+
+const getHostToken =
+  () =>
+    roomId
+      ? localStorage.getItem(
+        storageKey("host")
+      )
+      : null;
+
+
+const getParticipantToken =
+  () =>
+    roomId
+      ? localStorage.getItem(
+        storageKey("participant")
+      )
+      : null;
+
+
+const getMyMember =
+  () =>
+    roomId
+      ? localStorage.getItem(
+        storageKey("member")
+      )
+      : null;
+
+
+
+/* =========================================================
+   UTILS
+   ========================================================= */
+
+function randomToken(
+  bytes = 18
+) {
+  const data =
+    new Uint8Array(bytes);
 
   crypto.getRandomValues(data);
 
   return Array
     .from(
       data,
-      (b) => b.toString(16).padStart(2, "0")
+      b =>
+        b
+          .toString(16)
+          .padStart(2, "0")
     )
     .join("");
 }
 
 
-function showToast(message) {
-  $("toast").textContent = message;
-  $("toast").hidden = false;
-
-  clearTimeout(toastTimer);
-
-  toastTimer = setTimeout(() => {
-    $("toast").hidden = true;
-  }, 1800);
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(
+      /[&<>"']/g,
+      ch => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#039;"
+      })[ch]
+    );
 }
 
 
-async function api(path, options = {}) {
-  const response = await fetch(
-    `/api/${path}`,
-    {
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {})
-      },
-      ...options
-    }
+function showToast(message) {
+  $("toast").textContent =
+    message;
+
+  $("toast").hidden =
+    false;
+
+  clearTimeout(
+    toastTimer
   );
+
+  toastTimer =
+    setTimeout(
+      () => {
+        $("toast").hidden =
+          true;
+      },
+      1800
+    );
+}
+
+
+async function api(
+  path,
+  options = {}
+) {
+  const response =
+    await fetch(
+      `/api/${path}`,
+      {
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          ...(
+            options.headers ||
+            {}
+          )
+        },
+
+        ...options
+      }
+    );
+
 
   const data =
     await response
       .json()
-      .catch(() => ({}));
+      .catch(
+        () => ({})
+      );
+
 
   if (!response.ok) {
     throw new Error(
@@ -113,6 +195,7 @@ async function api(path, options = {}) {
       "요청을 처리하지 못했습니다."
     );
   }
+
 
   return data;
 }
@@ -126,62 +209,121 @@ function allMembers() {
 }
 
 
+function formatDate(
+  timestamp
+) {
+  const date =
+    new Date(
+      Number(timestamp)
+    );
+
+  return new Intl.DateTimeFormat(
+    "ko-KR",
+    {
+      month: "2-digit",
+      day: "2-digit"
+    }
+  )
+    .format(date)
+    .replace(/\.\s*/g, ".")
+    .replace(/\.$/, "");
+}
+
+
+
+/* =========================================================
+   메인 멤버 선택
+   ========================================================= */
+
 function renderMemberPicker() {
-  $("memberGrid").innerHTML = "";
+  $("memberGrid").innerHTML =
+    "";
 
-  for (const name of allMembers()) {
+
+  for (
+    const name of
+    allMembers()
+  ) {
     const button =
-      document.createElement("button");
+      document.createElement(
+        "button"
+      );
 
-    button.type = "button";
+    button.type =
+      "button";
 
     button.className =
       "member-button";
 
-    button.textContent = name;
+    button.textContent =
+      name;
+
 
     if (
-      selectedMembers.includes(name)
+      selectedMembers.includes(
+        name
+      )
     ) {
-      button.classList.add("selected");
+      button.classList.add(
+        "selected"
+      );
     }
 
+
     if (
-      !selectedMembers.includes(name) &&
-      selectedMembers.length >= queueSize
+      !selectedMembers.includes(
+        name
+      ) &&
+      selectedMembers.length >=
+      queueSize
     ) {
       button.classList.add(
         "limit-disabled"
       );
     }
 
-    button.onclick = () => {
-      if (
-        selectedMembers.includes(name)
-      ) {
-        selectedMembers =
-          selectedMembers.filter(
-            (v) => v !== name
-          );
-      } else if (
-        selectedMembers.length <
-        queueSize
-      ) {
-        selectedMembers.push(name);
-      }
 
-      renderMemberPicker();
-    };
+    button.onclick =
+      () => {
+        if (
+          selectedMembers.includes(
+            name
+          )
+        ) {
+          selectedMembers =
+            selectedMembers.filter(
+              value =>
+                value !==
+                name
+            );
+        } else if (
+          selectedMembers.length <
+          queueSize
+        ) {
+          selectedMembers.push(
+            name
+          );
+        }
+
+        renderMemberPicker();
+      };
+
 
     $("memberGrid")
-      .appendChild(button);
+      .appendChild(
+        button
+      );
   }
 
 
   const custom =
-    document.createElement("button");
+    document.createElement(
+      "button"
+    );
 
-  custom.type = "button";
+
+  custom.type =
+    "button";
 
   custom.className =
     "member-button custom-trigger";
@@ -189,65 +331,43 @@ function renderMemberPicker() {
   custom.textContent =
     "+ 직접 입력";
 
-  custom.onclick = () => {
-    $("customInputWrap").hidden =
-      !$("customInputWrap").hidden;
 
-    if (
-      !$("customInputWrap").hidden
-    ) {
-      $("customName").focus();
-    }
-  };
+  custom.onclick =
+    () => {
+      $("customInputWrap").hidden =
+        !$("customInputWrap").hidden;
+
+      if (
+        !$("customInputWrap").hidden
+      ) {
+        $("customName").focus();
+      }
+    };
+
 
   $("memberGrid")
-    .appendChild(custom);
+    .appendChild(
+      custom
+    );
 
 
   $("memberCount").textContent =
     `${selectedMembers.length} / ${queueSize}`;
 
-  const remain =
+
+  const remaining =
     queueSize -
     selectedMembers.length;
 
+
   $("helperText").textContent =
-    remain
-      ? `${remain}명 더 선택해 주세요.`
+    remaining
+      ? `${remaining}명 더 선택해 주세요.`
       : "준비 완료.";
 
+
   $("createRoomButton").disabled =
-    remain !== 0;
-}
-
-
-function syncOptionState() {
-  const enabled =
-    $("culpritToggle").checked;
-
-  for (
-    const id of [
-      "exileToggle",
-      "todayToggle"
-    ]
-  ) {
-    const input = $(id);
-
-    input.disabled =
-      !enabled;
-
-    input
-      .closest(".toggle-row")
-      .classList
-      .toggle(
-        "disabled",
-        !enabled
-      );
-
-    if (!enabled) {
-      input.checked = false;
-    }
-  }
+    remaining !== 0;
 }
 
 
@@ -257,79 +377,153 @@ function addCustomName() {
       .value
       .trim();
 
-  if (!name) return;
 
-  if (
-    allMembers()
-      .includes(name)
-  ) {
-    return showToast(
-      "이미 있는 이름이에요."
-    );
+  if (!name) {
+    return;
   }
 
-  customMembers.push(name);
 
-  $("customName").value = "";
+  if (
+    allMembers().includes(
+      name
+    )
+  ) {
+    showToast(
+      "이미 있는 이름이에요."
+    );
 
-  $("customInputWrap").hidden = true;
+    return;
+  }
+
+
+  customMembers.push(
+    name
+  );
+
+
+  $("customName").value =
+    "";
+
+
+  $("customInputWrap").hidden =
+    true;
+
 
   if (
     selectedMembers.length <
     queueSize
   ) {
-    selectedMembers.push(name);
+    selectedMembers.push(
+      name
+    );
   }
+
 
   renderMemberPicker();
 }
 
 
+
+/* =========================================================
+   옵션
+   ========================================================= */
+
+function syncOptionState() {
+  const enabled =
+    $("culpritToggle").checked;
+
+
+  for (
+    const id of [
+      "exileToggle",
+      "todayToggle"
+    ]
+  ) {
+    const input =
+      $(id);
+
+
+    input.disabled =
+      !enabled;
+
+
+    input
+      .closest(".toggle-row")
+      .classList
+      .toggle(
+        "disabled",
+        !enabled
+      );
+
+
+    if (!enabled) {
+      input.checked =
+        false;
+    }
+  }
+}
+
+
+
+/* =========================================================
+   방 생성
+   ========================================================= */
+
 function openCreateConfirm() {
   const options = [
     `큐 타입: ${queueSize}인큐`,
-    `멤버: ${selectedMembers.join(", ")}`,
-    `범인 투표: ${
-      $("culpritToggle").checked
-        ? "ON"
-        : "OFF"
+
+    `멤버: ${selectedMembers.join(
+      ", "
+    )}`,
+
+    `범인 투표: ${$("culpritToggle").checked
+      ? "ON"
+      : "OFF"
     }`
   ];
+
 
   if (
     $("culpritToggle").checked
   ) {
     options.push(
-      `범인 유배: ${
-        $("exileToggle").checked
-          ? "ON"
-          : "OFF"
+      `범인 유배: ${$("exileToggle").checked
+        ? "ON"
+        : "OFF"
       }`
     );
 
+
     options.push(
-      `오늘의 범인: ${
-        $("todayToggle").checked
-          ? "ON"
-          : "OFF"
+      `오늘의 범인: ${$("todayToggle").checked
+        ? "ON"
+        : "OFF"
       }`
     );
   }
 
+
   $("confirmSummary").innerHTML =
     options
       .map(
-        (v) =>
-          `<div>${escapeHtml(v)}</div>`
+        value =>
+          `<div>${escapeHtml(
+            value
+          )}</div>`
       )
       .join("");
 
-  $("confirmModal").hidden = false;
+
+  $("confirmModal").hidden =
+    false;
 }
 
 
 async function createRoom() {
-  $("confirmCreate").disabled = true;
+  $("confirmCreate").disabled =
+    true;
+
 
   try {
     const result =
@@ -338,35 +532,47 @@ async function createRoom() {
         {
           method: "POST",
 
-          body: JSON.stringify({
-            queueType: queueSize,
+          body:
+            JSON.stringify({
+              queueType:
+                queueSize,
 
-            members:
-              selectedMembers,
+              members:
+                selectedMembers,
 
-            culpritVoting:
-              $("culpritToggle").checked,
+              culpritVoting:
+                $("culpritToggle")
+                  .checked,
 
-            exile:
-              $("culpritToggle").checked &&
-              $("exileToggle").checked,
+              exile:
+                $("culpritToggle")
+                  .checked &&
+                $("exileToggle")
+                  .checked,
 
-            todayCulprit:
-              $("culpritToggle").checked &&
-              $("todayToggle").checked
-          })
+              todayCulprit:
+                $("culpritToggle")
+                  .checked &&
+                $("todayToggle")
+                  .checked
+            })
         }
       );
+
 
     localStorage.setItem(
       `gwailnam:${result.roomId}:host`,
       result.hostToken
     );
 
+
     location.href =
       `${location.pathname}?r=${result.roomId}`;
+
   } catch (error) {
-    showToast(error.message);
+    showToast(
+      error.message
+    );
 
     $("confirmCreate").disabled =
       false;
@@ -374,41 +580,208 @@ async function createRoom() {
 }
 
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(
-      /[&<>"']/g,
-      (ch) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        "\"": "&quot;",
-        "'": "&#039;"
-      })[ch]
-    );
+
+/* =========================================================
+   최근 영구 전적
+   ========================================================= */
+
+async function loadRecentHistory(
+  append = false
+) {
+  try {
+    const data =
+      await api(
+        `history?limit=${HISTORY_PAGE_SIZE}&offset=${historyOffset}`
+      );
+
+
+    if (!append) {
+      $("recentHistory")
+        .innerHTML =
+        "";
+    }
+
+
+    if (
+      !append &&
+      !data.matches.length
+    ) {
+      $("recentHistory")
+        .innerHTML =
+        `
+            <div class="history-empty">
+              아직 저장된 전적이 없습니다.
+            </div>
+          `;
+
+      $("moreHistoryButton").hidden =
+        true;
+
+      return;
+    }
+
+
+    for (
+      const match of
+      data.matches
+    ) {
+      $("recentHistory")
+        .insertAdjacentHTML(
+          "beforeend",
+          historyCardHtml(
+            match
+          )
+        );
+    }
+
+
+    historyOffset =
+      data.nextOffset;
+
+
+    $("moreHistoryButton").hidden =
+      !data.hasMore;
+
+  } catch {
+    $("recentHistory")
+      .innerHTML =
+      `
+          <div class="history-empty">
+            전적을 불러오지 못했습니다.
+          </div>
+        `;
+  }
 }
 
+
+function historyCardHtml(
+  match
+) {
+  const win =
+    match.result ===
+    "WIN";
+
+
+  const label =
+    win
+      ? "승"
+      : "패";
+
+
+  const className =
+    win
+      ? "win"
+      : "loss";
+
+
+  return `
+    <article
+      class="match-card ${className}"
+    >
+
+      <div class="match-card-head">
+
+        <span class="match-date">
+          ${formatDate(
+    match.playedAt
+  )}
+        </span>
+
+        <span
+          class="match-result ${className}"
+        >
+          ${label}
+        </span>
+
+      </div>
+
+      ${positionGridHtml(
+    match.positions
+  )}
+
+    </article>
+  `;
+}
+
+
+function positionGridHtml(
+  positions
+) {
+  return `
+    <div class="position-grid">
+
+      ${POSITIONS
+      .map(
+        position => `
+              <div class="position-slot">
+
+                <span class="position-code">
+                  ${POSITION_CODES[
+          position
+          ]
+          }
+                </span>
+
+                <strong class="position-player">
+                  ${positions[
+            position
+          ]
+            ? escapeHtml(
+              positions[
+              position
+              ]
+            )
+            : "-"
+          }
+                </strong>
+
+              </div>
+            `
+      )
+      .join("")
+    }
+
+    </div>
+  `;
+}
+
+
+
+/* =========================================================
+   방 진입
+   ========================================================= */
 
 function optionText(room) {
   const parts = [
     `${room.queueType}인큐`
   ];
 
+
   if (
-    !room.options.culpritVoting
+    !room.options
+      .culpritVoting
   ) {
-    parts.push("단순 리롤");
+    parts.push(
+      "범인 투표 OFF"
+    );
   } else {
-    parts.push("범인 투표");
+    parts.push(
+      "범인 투표"
+    );
+
 
     if (
       room.options.exile
     ) {
-      parts.push("유배 ON");
+      parts.push(
+        "유배 ON"
+      );
     }
 
+
     if (
-      room.options.todayCulprit
+      room.options
+        .todayCulprit
     ) {
       parts.push(
         "오늘의 범인 ON"
@@ -416,50 +789,76 @@ function optionText(room) {
     }
   }
 
-  return parts.join(" · ");
+
+  return parts.join(
+    " · "
+  );
 }
 
 
 async function loadRoom() {
-  $("homeView").hidden = true;
+  $("homeView").hidden =
+    true;
 
-  $("roomView").hidden = false;
+  $("roomView").hidden =
+    false;
 
   $("roomCode").textContent =
     roomId;
 
-  await refreshRoom(true);
+
+  await refreshRoom(
+    true
+  );
+
 
   startTimers();
 }
 
 
-function startTimers() {
-  clearInterval(pollTimer);
 
-  clearInterval(heartbeatTimer);
+/* =========================================================
+   POLLING
+   ========================================================= */
+
+function startTimers() {
+  clearInterval(
+    pollTimer
+  );
+
+  clearInterval(
+    heartbeatTimer
+  );
 
 
   pollTimer =
-    setInterval(() => {
-      if (
-        document.visibilityState ===
-        "visible"
-      ) {
-        refreshRoom(false);
-      }
-    }, 2000);
+    setInterval(
+      () => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          refreshRoom(
+            false
+          );
+        }
+      },
+      2000
+    );
 
 
   heartbeatTimer =
-    setInterval(() => {
-      if (
-        document.visibilityState ===
-        "visible"
-      ) {
-        heartbeat();
-      }
-    }, 10000);
+    setInterval(
+      () => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          heartbeat();
+        }
+      },
+      10000
+    );
 
 
   document.addEventListener(
@@ -470,7 +869,9 @@ function startTimers() {
         "visible"
       ) {
         heartbeat();
-        refreshRoom(false);
+        refreshRoom(
+          false
+        );
       }
     }
   );
@@ -481,7 +882,11 @@ async function heartbeat() {
   const token =
     getParticipantToken();
 
-  if (!token) return;
+
+  if (!token) {
+    return;
+  }
+
 
   try {
     await api(
@@ -489,13 +894,16 @@ async function heartbeat() {
       {
         method: "POST",
 
-        body: JSON.stringify({
-          roomId,
-          participantToken: token
-        })
+        body:
+          JSON.stringify({
+            roomId,
+
+            participantToken:
+              token
+          })
       }
     );
-  } catch {}
+  } catch { }
 }
 
 
@@ -506,44 +914,75 @@ async function refreshRoom(
     const token =
       getParticipantToken();
 
+
     const query =
       new URLSearchParams({
         r: roomId
       });
 
+
     if (token) {
-      query.set("pt", token);
+      query.set(
+        "pt",
+        token
+      );
     }
+
 
     const room =
       await api(
         `state?${query.toString()}`
       );
 
-    currentRoom = room;
 
-    renderRoom(room);
+    currentRoom =
+      room;
+
+
+    renderRoom(
+      room
+    );
+
   } catch (error) {
     if (loud) {
-      showToast(error.message);
+      showToast(
+        error.message
+      );
     }
 
+
     if (
-      error.message.includes("만료")
+      error.message.includes(
+        "만료"
+      )
     ) {
-      clearInterval(pollTimer);
-      clearInterval(heartbeatTimer);
+      clearInterval(
+        pollTimer
+      );
+
+      clearInterval(
+        heartbeatTimer
+      );
+
 
       $("roomView").innerHTML =
         `
           <section class="panel">
+
             <div class="notice">
-              ${escapeHtml(error.message)}
+
+              ${escapeHtml(
+          error.message
+        )}
+
               <br><br>
+
               <a href="${location.pathname}">
                 새 방 만들기
               </a>
+
             </div>
+
           </section>
         `;
     }
@@ -551,42 +990,56 @@ async function refreshRoom(
 }
 
 
+
+/* =========================================================
+   방 렌더
+   ========================================================= */
+
 function renderRoom(room) {
   $("roomOptionSummary")
     .textContent =
-      optionText(room);
+    optionText(
+      room
+    );
+
 
   $("roundNumber")
     .textContent =
-      room.round;
+    room.round;
+
 
   $("stateBadge")
     .textContent =
-      room.state;
+    room.state;
+
 
   $("onlineCount")
     .textContent =
-      `${room.onlineCount} / ${room.members.length}`;
+    `${room.onlineCount} / ${room.members.length}`;
 
 
   const myMember =
     getMyMember();
 
+
   const claimed =
     new Set(
       room.participants
         .map(
-          (p) => p.member
+          participant =>
+            participant.member
         )
     );
+
 
   const myActive =
     myMember &&
     room.participants
       .some(
-        (p) =>
-          p.member === myMember &&
-          p.mine
+        participant =>
+          participant.member ===
+          myMember &&
+          participant.mine
       );
 
 
@@ -602,52 +1055,64 @@ function renderRoom(room) {
   }
 
 
-  $("presenceList").innerHTML =
+  $("presenceList")
+    .innerHTML =
     room.members
-      .map((name) => {
-        const p =
-          room.participants
-            .find(
-              (x) =>
-                x.member === name
-            );
+      .map(
+        name => {
+          const participant =
+            room.participants
+              .find(
+                item =>
+                  item.member ===
+                  name
+              );
 
-        return `
-          <div class="presence-row">
-            <span class="presence-name">
-              <span
-                class="dot ${
-                  p?.online
-                    ? "online"
-                    : ""
-                }"
-              ></span>
 
-              ${escapeHtml(name)}
-            </span>
+          return `
+              <div class="presence-row">
 
-            <span class="presence-state">
-              ${
-                p?.online
-                  ? "입장"
-                  : "대기"
-              }
-            </span>
-          </div>
-        `;
-      })
+                <span class="presence-name">
+
+                  <span
+                    class="dot ${participant?.online
+              ? "online"
+              : ""
+            }"
+                  ></span>
+
+                  ${escapeHtml(
+              name
+            )}
+
+                </span>
+
+                <span class="presence-state">
+                  ${participant?.online
+              ? "입장"
+              : "대기"
+            }
+                </span>
+
+              </div>
+            `;
+        }
+      )
       .join("");
 
 
   $("todayPanel").hidden =
-    !room.options.todayCulprit;
+    !room.options
+      .todayCulprit;
 
 
   if (
-    room.options.todayCulprit
+    room.options
+      .todayCulprit
   ) {
     renderToday(
-      room.todayRanking || []
+      room.todayRanking ||
+      []
     );
   }
 
@@ -657,26 +1122,41 @@ function renderRoom(room) {
     !!getHostToken(),
     myActive
   );
+
+
+  renderRoundHistory(
+    room,
+    !!getHostToken()
+  );
 }
 
+
+
+/* =========================================================
+   참가자 이름 선택
+   ========================================================= */
 
 function renderJoinGrid(
   room,
   claimed
 ) {
-  $("joinGrid").innerHTML = "";
+  $("joinGrid").innerHTML =
+    "";
+
 
   const myMember =
     getMyMember();
 
 
   for (
-    const name of room.members
+    const name of
+    room.members
   ) {
     const button =
       document.createElement(
         "button"
       );
+
 
     button.type =
       "button";
@@ -713,11 +1193,16 @@ function renderJoinGrid(
 
 
     button.onclick =
-      () => joinAs(name);
+      () =>
+        joinAs(
+          name
+        );
 
 
     $("joinGrid")
-      .appendChild(button);
+      .appendChild(
+        button
+      );
   }
 }
 
@@ -726,6 +1211,7 @@ async function joinAs(name) {
   try {
     let token =
       getParticipantToken();
+
 
     if (!token) {
       token =
@@ -739,96 +1225,121 @@ async function joinAs(name) {
         {
           method: "POST",
 
-          body: JSON.stringify({
-            roomId,
-            member: name,
-            participantToken: token
-          })
+          body:
+            JSON.stringify({
+              roomId,
+              member: name,
+
+              participantToken:
+                token
+            })
         }
       );
 
 
     localStorage.setItem(
-      storageKey("participant"),
+      storageKey(
+        "participant"
+      ),
       result.participantToken
     );
 
+
     localStorage.setItem(
-      storageKey("member"),
+      storageKey(
+        "member"
+      ),
       name
     );
 
 
     await heartbeat();
 
-    await refreshRoom(true);
+    await refreshRoom(
+      true
+    );
+
   } catch (error) {
-    showToast(error.message);
+    showToast(
+      error.message
+    );
   }
+}
+
+
+
+/* =========================================================
+   포지션 표시
+   ========================================================= */
+
+function normalizeLivePositions(
+  room
+) {
+  const result = {
+    탑: null,
+    정글: null,
+    미드: null,
+    원딜: null,
+    서폿: null
+  };
+
+
+  for (
+    const row of
+    room.positions || []
+  ) {
+    if (
+      row.position
+    ) {
+      result[
+        row.position
+      ] =
+        row.player;
+    } else if (
+      row.primary
+    ) {
+      result[
+        row.primary
+      ] =
+        row.player;
+    }
+  }
+
+
+  return result;
 }
 
 
 function renderPositions(room) {
-  if (!room.positions) {
+  if (
+    !room.positions
+  ) {
     return "";
   }
 
 
-  if (
-    room.queueType === 5
-  ) {
-    return `
-      <div class="result-card">
-        ${
-          room.positions
-            .map(
-              (row) => `
-                <div class="result-row">
-                  <span class="role-label">
-                    ${POSITION_CODES[row.position]}
-                  </span>
-
-                  <span class="player-name">
-                    ${escapeHtml(row.player)}
-                  </span>
-                </div>
-              `
-            )
-            .join("")
-        }
-      </div>
-    `;
-  }
+  const normalized =
+    normalizeLivePositions(
+      room
+    );
 
 
   return `
-    <div class="result-card">
-      ${
-        room.positions
-          .map(
-            (row) => `
-              <div class="result-row">
-                <span class="player-name">
-                  ${escapeHtml(row.player)}
-                </span>
+    <div class="live-position-card">
 
-                <span class="position-pair">
-                  <strong>
-                    주 · ${escapeHtml(row.primary)}
-                  </strong>
+      ${positionGridHtml(
+    normalized
+  )}
 
-                  <small>
-                    부 · ${escapeHtml(row.secondary)}
-                  </small>
-                </span>
-              </div>
-            `
-          )
-          .join("")
-      }
     </div>
   `;
 }
+
+
+
+/* =========================================================
+   게임 상태
+   ========================================================= */
 
 function renderGame(
   room,
@@ -841,30 +1352,47 @@ function renderGame(
   const controls =
     $("hostControls");
 
-  controls.innerHTML = "";
 
+  /*
+   * 투표 입력 도중에는
+   * hostControls만 비우고,
+   * select DOM을 재생성하지 않는다.
+   */
+
+  controls.innerHTML =
+    "";
+
+
+  /* -------------------------------------------------------
+     WAITING
+     ------------------------------------------------------- */
 
   if (
-    room.state === "WAITING"
+    room.state ===
+    "WAITING"
   ) {
     $("gameTitle")
       .textContent =
-        "포지션 대기";
+      "포지션 대기";
+
 
     const allIn =
       room.onlineCount ===
       room.members.length;
 
+
     body.innerHTML =
       `
         <div class="notice">
-          ${
-            allIn
-              ? "전원 입장 완료. 포지션을 정할 수 있습니다."
-              : `전원이 입장하면 포지션을 돌릴 수 있습니다. (${room.onlineCount}/${room.members.length})`
-          }
+
+          ${allIn
+        ? "전원 입장 완료. 포지션을 정할 수 있습니다."
+        : `전원이 입장하면 포지션을 돌릴 수 있습니다. (${room.onlineCount}/${room.members.length})`
+      }
+
         </div>
       `;
+
 
     if (isHost) {
       controls.innerHTML =
@@ -878,76 +1406,94 @@ function renderGame(
           </button>
         `;
 
-      $("rollRoomButton").onclick =
-        () => hostAction("roll");
+
+      $("rollRoomButton")
+        .onclick =
+        () =>
+          hostAction(
+            "roll"
+          );
     }
+
 
     return;
   }
 
 
+  /* -------------------------------------------------------
+     PLAYING
+     ------------------------------------------------------- */
+
   if (
-    room.state === "PLAYING"
+    room.state ===
+    "PLAYING"
   ) {
     $("gameTitle")
       .textContent =
-        "게임 진행 중";
+      "게임 진행 중";
+
 
     body.innerHTML =
-      renderPositions(room);
+      renderPositions(
+        room
+      );
+
 
     if (isHost) {
-      if (
-        room.options.culpritVoting
-      ) {
-        controls.innerHTML =
-          `
-            <button
-              id="winButton"
-              class="roll-button secondary"
-            >
-              승리
-            </button>
+      controls.innerHTML =
+        `
+          <button
+            id="winButton"
+            class="roll-button win-button"
+          >
+            승리
+          </button>
 
-            <button
-              id="lossButton"
-              class="roll-button danger"
-            >
-              패배 · 범인 투표
-            </button>
-          `;
+          <button
+            id="lossButton"
+            class="roll-button danger"
+          >
+            ${room.options
+          .culpritVoting
+          ? "패배 · 범인 투표"
+          : "패배"
+        }
+          </button>
+        `;
 
-        $("winButton").onclick =
-          () => hostAction("win");
 
-        $("lossButton").onclick =
-          () => hostAction("loss");
-      } else {
-        controls.innerHTML =
-          `
-            <button
-              id="nextSimpleButton"
-              class="roll-button"
-            >
-              다음 판
-            </button>
-          `;
+      $("winButton")
+        .onclick =
+        () =>
+          hostAction(
+            "win"
+          );
 
-        $("nextSimpleButton").onclick =
-          () => hostAction("next");
-      }
+
+      $("lossButton")
+        .onclick =
+        () =>
+          hostAction(
+            "loss"
+          );
     }
+
 
     return;
   }
 
 
+  /* -------------------------------------------------------
+     VOTING
+     ------------------------------------------------------- */
+
   if (
-    room.state === "VOTING"
+    room.state ===
+    "VOTING"
   ) {
     $("gameTitle")
       .textContent =
-        "범인 투표";
+      "범인 투표";
 
 
     if (!myActive) {
@@ -956,10 +1502,12 @@ function renderGame(
           "voteProgress"
         );
 
+
       const existingNotice =
         body.querySelector(
           ".notice"
         );
+
 
       if (
         existingProgress &&
@@ -970,6 +1518,7 @@ function renderGame(
 
         return;
       }
+
 
       body.innerHTML =
         `
@@ -985,6 +1534,7 @@ function renderGame(
           </p>
         `;
 
+
       return;
     }
 
@@ -997,10 +1547,12 @@ function renderGame(
           "voteProgress"
         );
 
+
       const existingNotice =
         body.querySelector(
           ".notice"
         );
+
 
       if (
         existingProgress &&
@@ -1011,6 +1563,7 @@ function renderGame(
 
         return;
       }
+
 
       body.innerHTML =
         `
@@ -1027,25 +1580,23 @@ function renderGame(
           </p>
         `;
 
+
       return;
     }
 
 
     /*
-     * 투표 폼이 이미 존재하면
-     * polling 때 DOM을 다시 만들지 않는다.
+     * 이미 폼이 존재하면
+     * 재렌더하지 않는다.
      *
-     * 따라서:
-     * - 선택한 값 유지
-     * - 열린 select 유지
-     * - 모바일 선택창 강제 종료 방지
-     *
-     * 투표 진행 숫자만 변경한다.
+     * select 열림/선택값 유지.
      */
+
     const existingForm =
       document.getElementById(
         "submitVoteButton"
       );
+
 
     if (existingForm) {
       const progress =
@@ -1053,34 +1604,50 @@ function renderGame(
           "voteProgress"
         );
 
+
       if (progress) {
         progress.textContent =
           `${room.voteCount} / ${room.members.length}명 투표 완료`;
       }
+
 
       return;
     }
 
 
     body.innerHTML =
-      voteFormHtml(room);
+      voteFormHtml(
+        room
+      );
 
-    $("submitVoteButton").onclick =
+
+    $("submitVoteButton")
+      .onclick =
       submitVote;
+
 
     return;
   }
 
 
+  /* -------------------------------------------------------
+     RESULT
+     ------------------------------------------------------- */
+
   if (
-    room.state === "RESULT"
+    room.state ===
+    "RESULT"
   ) {
     $("gameTitle")
       .textContent =
-        "투표 결과";
+      "투표 결과";
+
 
     body.innerHTML =
-      resultHtml(room);
+      resultHtml(
+        room
+      );
+
 
     if (isHost) {
       controls.innerHTML =
@@ -1093,28 +1660,51 @@ function renderGame(
           </button>
         `;
 
-      $("nextRoundButton").onclick =
-        () => hostAction("next");
+
+      $("nextRoundButton")
+        .onclick =
+        () =>
+          hostAction(
+            "next"
+          );
     }
+
 
     return;
   }
 }
 
+
+
+/* =========================================================
+   투표
+   ========================================================= */
+
 function voteFormHtml(room) {
   const options =
     room.members
       .map(
-        (name) =>
-          `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`
+        name =>
+          `
+            <option
+              value="${escapeHtml(
+            name
+          )}"
+            >
+              ${escapeHtml(
+            name
+          )}
+            </option>
+          `
       )
       .join("");
 
 
-  const positionBlock =
+  const exileBlock =
     room.options.exile
       ? `
           <div class="vote-block">
+
             <label for="exilePosition">
               최종 범인의 다음 판 포지션
             </label>
@@ -1123,15 +1713,23 @@ function voteFormHtml(room) {
               id="exilePosition"
               class="vote-select"
             >
-              ${
-                POSITIONS
-                  .map(
-                    (p) =>
-                      `<option value="${p}">${p}</option>`
-                  )
-                  .join("")
-              }
+
+              ${POSITIONS
+        .map(
+          position =>
+            `
+                        <option
+                          value="${position}"
+                        >
+                          ${position}
+                        </option>
+                      `
+        )
+        .join("")
+      }
+
             </select>
+
           </div>
         `
       : "";
@@ -1141,6 +1739,7 @@ function voteFormHtml(room) {
     <div class="vote-form">
 
       <div class="vote-block">
+
         <label for="primaryCulprit">
           주 범인 · +10점
         </label>
@@ -1151,10 +1750,12 @@ function voteFormHtml(room) {
         >
           ${options}
         </select>
+
       </div>
 
 
       <div class="vote-block">
+
         <label for="secondaryCulprit">
           부 범인 · +5점
         </label>
@@ -1165,9 +1766,12 @@ function voteFormHtml(room) {
         >
           ${options}
         </select>
+
       </div>
 
-      ${positionBlock}
+
+      ${exileBlock}
+
 
       <button
         id="submitVoteButton"
@@ -1175,6 +1779,7 @@ function voteFormHtml(room) {
       >
         투표 완료
       </button>
+
 
       <p
         class="vote-progress"
@@ -1190,23 +1795,30 @@ function voteFormHtml(room) {
 
 async function submitVote() {
   const primary =
-    $("primaryCulprit").value;
+    $("primaryCulprit")
+      .value;
+
 
   const secondary =
-    $("secondaryCulprit").value;
+    $("secondaryCulprit")
+      .value;
 
 
   if (
-    primary === secondary
+    primary ===
+    secondary
   ) {
-    return showToast(
+    showToast(
       "주 범인과 부 범인은 달라야 해요."
     );
+
+    return;
   }
 
 
   const payload = {
     roomId,
+
     participantToken:
       getParticipantToken(),
 
@@ -1216,10 +1828,12 @@ async function submitVote() {
 
 
   if (
-    currentRoom.options.exile
+    currentRoom.options
+      .exile
   ) {
     payload.exilePosition =
-      $("exilePosition").value;
+      $("exilePosition")
+        .value;
   }
 
 
@@ -1230,16 +1844,29 @@ async function submitVote() {
         method: "POST",
 
         body:
-          JSON.stringify(payload)
+          JSON.stringify(
+            payload
+          )
       }
     );
 
-    await refreshRoom(true);
+
+    await refreshRoom(
+      true
+    );
+
   } catch (error) {
-    showToast(error.message);
+    showToast(
+      error.message
+    );
   }
 }
 
+
+
+/* =========================================================
+   투표 결과
+   ========================================================= */
 
 function resultHtml(room) {
   const result =
@@ -1258,19 +1885,26 @@ function resultHtml(room) {
   const scoreRows =
     result.scores
       .map(
-        (row, i) => `
+        (
+          row,
+          index
+        ) => `
           <div class="score-row">
+
             <span class="rank-num">
-              ${i + 1}
+              ${index + 1}
             </span>
 
             <span class="score-name">
-              ${escapeHtml(row.member)}
+              ${escapeHtml(
+          row.member
+        )}
             </span>
 
             <span class="score-value">
               ${row.score}점
             </span>
+
           </div>
         `
       )
@@ -1281,11 +1915,18 @@ function resultHtml(room) {
     result.exilePosition
       ? `
           <div class="exile-banner">
-            ${escapeHtml(result.culprit)}
+
+            ${escapeHtml(
+        result.culprit
+      )}
             →
+
             다음 판
-            ${escapeHtml(result.exilePosition)}
+            ${escapeHtml(
+        result.exilePosition
+      )}
             고정
+
           </div>
         `
       : "";
@@ -1293,97 +1934,305 @@ function resultHtml(room) {
 
   return `
     <div class="vote-result-title">
+
       <small>
         이번 판 최종 범인
       </small>
 
       <strong>
-        ${escapeHtml(result.culprit)}
+        ${escapeHtml(
+    result.culprit
+  )}
       </strong>
+
     </div>
+
 
     <div class="score-list">
       ${scoreRows}
     </div>
+
 
     ${exile}
   `;
 }
 
 
-function renderToday(ranking) {
+
+/* =========================================================
+   오늘의 범인
+   ========================================================= */
+
+function renderToday(
+  ranking
+) {
   if (
     !ranking.length ||
     ranking.every(
-      (row) => row.score === 0
+      row =>
+        row.score === 0
     )
   ) {
-    $("todayRanking").innerHTML =
+    $("todayRanking")
+      .innerHTML =
       `
-        <div class="notice">
-          아직 누적 점수가 없습니다.
-        </div>
-      `;
+          <div class="notice">
+            아직 누적 점수가 없습니다.
+          </div>
+        `;
 
     return;
   }
 
 
-  $("todayRanking").innerHTML =
+  $("todayRanking")
+    .innerHTML =
     ranking
       .map(
-        (row, i) => `
-          <div class="ranking-row">
-            <span class="rank-num">
-              ${i + 1}
-            </span>
+        (
+          row,
+          index
+        ) => `
+            <div class="ranking-row">
 
-            <span class="score-name">
-              ${escapeHtml(row.member)}
-            </span>
+              <span class="rank-num">
+                ${index + 1}
+              </span>
 
-            <span class="score-value">
-              ${row.score}점
-            </span>
-          </div>
-        `
+              <span class="score-name">
+                ${escapeHtml(
+          row.member
+        )}
+              </span>
+
+              <span class="score-value">
+                ${row.score}점
+              </span>
+
+            </div>
+          `
       )
       .join("");
 }
 
 
-async function hostAction(action) {
-  const hostToken =
-    getHostToken();
 
-  if (!hostToken) return;
+/* =========================================================
+   라운드 기록
+   ========================================================= */
+
+function renderRoundHistory(
+  room,
+  isHost
+) {
+  const history =
+    room.roundHistory ||
+    [];
 
 
-  try {
-    await api(
-      "host",
-      {
-        method: "POST",
+  $("roundHistoryCount")
+    .textContent =
+    `${history.length}판`;
 
-        body: JSON.stringify({
-          roomId,
-          hostToken,
-          action
-        })
-      }
-    );
 
-    await refreshRoom(true);
-  } catch (error) {
-    showToast(error.message);
+  if (
+    !history.length
+  ) {
+    $("roundHistory")
+      .innerHTML =
+      `
+          <div class="notice">
+            아직 완료된 게임이 없습니다.
+          </div>
+        `;
+  } else {
+    $("roundHistory")
+      .innerHTML =
+      history
+        .map(
+          round =>
+            roundHistoryHtml(
+              round
+            )
+        )
+        .join("");
+  }
+
+
+  $("exportArea").hidden =
+    !isHost ||
+    history.length === 0;
+
+
+  if (
+    isHost &&
+    history.length
+  ) {
+    const count =
+      Number(
+        room.exportableCount ||
+        0
+      );
+
+
+    $("exportHistoryButton").disabled =
+      count === 0;
+
+
+    $("exportHint").textContent =
+      count > 0
+        ? `아직 내보내지 않은 전적 ${count}판`
+        : "모든 완료 전적을 내보냈습니다.";
   }
 }
 
 
-$("copyLinkButton").onclick =
+function roundHistoryHtml(
+  round
+) {
+  const win =
+    round.result ===
+    "WIN";
+
+
+  return `
+    <article
+      class="room-history-card ${win
+      ? "win"
+      : "loss"
+    }"
+    >
+
+      <div class="room-history-head">
+
+        <span>
+          ROUND ${round.round}
+        </span>
+
+        <div class="room-history-tags">
+
+          ${round.exported
+      ? `
+                  <span class="exported-badge">
+                    저장됨
+                  </span>
+                `
+      : ""
+    }
+
+          <span
+            class="match-result ${win
+      ? "win"
+      : "loss"
+    }"
+          >
+            ${win
+      ? "승"
+      : "패"
+    }
+          </span>
+
+        </div>
+
+      </div>
+
+
+      ${positionGridHtml(
+      round.positions
+    )}
+
+
+      ${round.culprit
+      ? `
+              <div class="round-culprit">
+                범인 ·
+                ${escapeHtml(
+        round.culprit
+      )}
+              </div>
+            `
+      : ""
+    }
+
+    </article>
+  `;
+}
+
+
+
+/* =========================================================
+   방장 액션
+   ========================================================= */
+
+async function hostAction(
+  action
+) {
+  const hostToken =
+    getHostToken();
+
+
+  if (!hostToken) {
+    return;
+  }
+
+
+  try {
+    const result =
+      await api(
+        "host",
+        {
+          method: "POST",
+
+          body:
+            JSON.stringify({
+              roomId,
+              hostToken,
+              action
+            })
+        }
+      );
+
+
+    if (
+      action === "export"
+    ) {
+      if (
+        result.exported > 0
+      ) {
+        showToast(
+          `${result.exported}판을 저장했습니다.`
+        );
+      } else {
+        showToast(
+          "새로 저장할 전적이 없습니다."
+        );
+      }
+    }
+
+
+    await refreshRoom(
+      true
+    );
+
+  } catch (error) {
+    showToast(
+      error.message
+    );
+  }
+}
+
+
+
+/* =========================================================
+   이벤트
+   ========================================================= */
+
+$("copyLinkButton")
+  .onclick =
   async () => {
     try {
-      await navigator.clipboard
+      await navigator
+        .clipboard
         .writeText(
           location.href
         );
@@ -1391,6 +2240,7 @@ $("copyLinkButton").onclick =
       showToast(
         "방 링크를 복사했어요."
       );
+
     } catch {
       showToast(
         "주소창의 링크를 복사해 주세요."
@@ -1400,50 +2250,65 @@ $("copyLinkButton").onclick =
 
 
 document
-  .querySelectorAll(".segment")
-  .forEach((button) => {
-    button.onclick = () => {
-      queueSize =
-        Number(
-          button.dataset.queue
-        );
+  .querySelectorAll(
+    ".segment"
+  )
+  .forEach(
+    button => {
+      button.onclick =
+        () => {
+          queueSize =
+            Number(
+              button.dataset
+                .queue
+            );
 
-      document
-        .querySelectorAll(".segment")
-        .forEach(
-          (b) =>
-            b.classList.toggle(
-              "active",
-              b === button
+
+          document
+            .querySelectorAll(
+              ".segment"
             )
-        );
+            .forEach(
+              item =>
+                item.classList
+                  .toggle(
+                    "active",
+                    item ===
+                    button
+                  )
+            );
 
-      if (
-        selectedMembers.length >
-        queueSize
-      ) {
-        selectedMembers =
-          selectedMembers.slice(
-            0,
+
+          if (
+            selectedMembers.length >
             queueSize
-          );
-      }
+          ) {
+            selectedMembers =
+              selectedMembers.slice(
+                0,
+                queueSize
+              );
+          }
 
-      renderMemberPicker();
-    };
-  });
+
+          renderMemberPicker();
+        };
+    }
+  );
 
 
-$("addCustomMember").onclick =
+$("addCustomMember")
+  .onclick =
   addCustomName;
 
 
 $("customName")
   .addEventListener(
     "keydown",
-    (e) => {
+    event => {
       if (
-        e.key === "Enter"
+        event.key ===
+        "Enter"
       ) {
         addCustomName();
       }
@@ -1451,28 +2316,57 @@ $("customName")
   );
 
 
-$("culpritToggle").onchange =
+$("culpritToggle")
+  .onchange =
   syncOptionState;
 
 
-$("createRoomButton").onclick =
+$("createRoomButton")
+  .onclick =
   openCreateConfirm;
 
 
-$("cancelCreate").onclick =
+$("cancelCreate")
+  .onclick =
   () => {
     $("confirmModal").hidden =
       true;
   };
 
 
-$("confirmCreate").onclick =
+$("confirmCreate")
+  .onclick =
   createRoom;
 
 
+$("moreHistoryButton")
+  .onclick =
+  () =>
+    loadRecentHistory(
+      true
+    );
+
+
+$("exportHistoryButton")
+  .onclick =
+  () =>
+    hostAction(
+      "export"
+    );
+
+
+
+/* =========================================================
+   START
+   ========================================================= */
+
 if (roomId) {
   loadRoom();
+
 } else {
   renderMemberPicker();
+
   syncOptionState();
+
+  loadRecentHistory();
 }
